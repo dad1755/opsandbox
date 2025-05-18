@@ -14,8 +14,15 @@ RUN apt-get update && apt-get install -y \
     exif ldap bz2 opcache \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Enable Apache rewrite
+# Enable Apache rewrite module
 RUN a2enmod rewrite
+
+# Set Apache to listen on port 8080 (OpenShift-compatible)
+RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf
+
+# Redirect Apache logs to stdout/stderr for OpenShift logging
+RUN ln -sf /dev/stderr /var/log/apache2/error.log && \
+    ln -sf /dev/stdout /var/log/apache2/access.log
 
 # Set working directory
 WORKDIR /var/www
@@ -28,7 +35,7 @@ RUN curl -L -o /tmp/glpi.tgz https://github.com/glpi-project/glpi/releases/downl
 # Create GLPI data directories and set permissions
 RUN mkdir -p /var/lib/glpi/{_cache,_cron,_dumps,_graphs,_lock,_pictures,_plugins,_rss,_sessions,_tmp,_uploads} && \
     mkdir -p /var/log/glpi && \
-    chown -R www-data:www-data /var/lib/glpi /var/log/glpi && \
+    chown -R www-data:0 /var/lib/glpi /var/log/glpi && \
     chmod -R 775 /var/lib/glpi /var/log/glpi
 
 # Create config directory
@@ -37,7 +44,7 @@ RUN mkdir -p /var/www/config && \
 define('GLPI_VAR_DIR', '/var/lib/glpi'); \
 define('GLPI_LOG_DIR', '/var/log/glpi'); \
 ?>" > /var/www/config/local_define.php && \
-    chown -R www-data:www-data /var/www/config && \
+    chown -R www-data:0 /var/www/config && \
     chmod -R 775 /var/www/config
 
 # Configure downstream.php
@@ -49,7 +56,7 @@ if (file_exists(GLPI_CONFIG_DIR . '/local_define.php')) { \
 ?>" > /var/www/glpi/inc/downstream.php
 
 # Set permissions for GLPI
-RUN chown -R www-data:www-data /var/www/glpi && \
+RUN chown -R www-data:0 /var/www/glpi && \
     chmod -R 775 /var/www/glpi
 
 # PHP configuration
@@ -59,7 +66,14 @@ RUN echo "memory_limit = 256M" > /usr/local/etc/php/conf.d/glpi.ini && \
     echo "max_execution_time = 60" >> /usr/local/etc/php/conf.d/glpi.ini && \
     echo "session.cookie_httponly = On" >> /usr/local/etc/php/conf.d/glpi.ini
 
-# Use custom Apache vhost config
+# Copy custom Apache vhost config
 COPY glpi.conf /etc/apache2/sites-available/000-default.conf
 
-EXPOSE 80
+# Set ServerName globally to suppress FQDN warning
+RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
+
+# Ensure Apache runs as www-data with group 0 (OpenShift root group)
+RUN sed -i 's/User www-data/User www-data/' /etc/apache2/apache2.conf && \
+    sed -i 's/Group www-data/Group 0/' /etc/apache2/apache2.conf
+
+EXPOSE 8080
