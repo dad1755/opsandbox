@@ -20,12 +20,10 @@ RUN a2enmod rewrite
 # Set working directory
 WORKDIR /var/www
 
-# Copy local GLPI tarball into the container
-COPY glpi-10.0.17.tgz /tmp/
-
-# Extract GLPI and clean up
-RUN tar -xzf /tmp/glpi-10.0.17.tgz -C /var/www && \
-    rm /tmp/glpi-10.0.17.tgz
+# Download and extract GLPI
+RUN curl -L -o /tmp/glpi.tgz https://github.com/glpi-project/glpi/releases/download/${GLPI_VERSION}/glpi-${GLPI_VERSION}.tgz && \
+    tar -xzf /tmp/glpi.tgz -C /var/www && \
+    rm /tmp/glpi.tgz
 
 # Create GLPI data directories and set permissions
 RUN mkdir -p /var/lib/glpi/{_cache,_cron,_dumps,_graphs,_lock,_pictures,_plugins,_rss,_sessions,_tmp,_uploads} && \
